@@ -7,7 +7,7 @@ enum AppChangelog {
 
     /// Bump this when you add a release below. The "What's New" sheet shows automatically when the
     /// stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
-    static let currentVersion = "1.7"
+    static let currentVersion = "1.8"
 
     struct Release: Identifiable {
         let version: String
@@ -19,6 +19,14 @@ enum AppChangelog {
 
     /// Newest first.
     static let releases: [Release] = [
+        Release(
+            version: "1.8",
+            title: "Strap-log export on Mac + a Health Monitor fix",
+            date: "June 2026",
+            items: [
+                "Mac: you can now export the strap log — Copy / Save… on the Live screen's strap log — so Mac users can attach it to a bug report too (Android has had this since 1.6).",
+                "Fixed the Health Monitor heart-rate chart sitting on a flat line: it now plots your live heart rate over time instead of deriving from sparse R-R data.",
+            ]),
         Release(
             version: "1.7",
             title: "WHOOP 5/MG frame capture",

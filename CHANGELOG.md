@@ -17,6 +17,17 @@ approximate; downloads are on the [Releases](https://github.com/NoopApp/noop/rel
 
 ---
 
+## 1.8 — Strap-log export on Mac + a Health Monitor fix
+
+- **New (Mac): export the strap log.** The Live screen's strap-log card now has **Copy** and **Save…**
+  buttons, so Mac users can attach the connection log to a bug report — Android has had this since 1.6,
+  Mac didn't (issue #17).
+- **Fixed: Health Monitor heart-rate chart flat-lining.** It derived the chart from R-R intervals,
+  which are sparse on WHOOP 4.0, so it sat on a flat 2-point line even while HR was clearly changing.
+  It now plots a rolling buffer of your live heart rate over time (issue #18).
+
+---
+
 ## 1.7 — WHOOP 5/MG frame capture + protocol workbench
 
 - **New (Mac): opt-in WHOOP 5/MG frame capture.** Settings → Experimental → "Record puffin frames"

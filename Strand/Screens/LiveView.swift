@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import StrandDesign
 import WhoopProtocol
 
@@ -162,8 +163,17 @@ struct LiveView: View {
     private var logCard: some View {
         NoopCard {
             VStack(alignment: .leading, spacing: 8) {
-                Text("STRAP LOG").font(StrandFont.overline).tracking(StrandFont.overlineTracking)
-                    .foregroundStyle(StrandPalette.textSecondary)
+                HStack(spacing: 12) {
+                    Text("STRAP LOG").font(StrandFont.overline).tracking(StrandFont.overlineTracking)
+                        .foregroundStyle(StrandPalette.textSecondary)
+                    Spacer()
+                    // Export the log so people can attach it to a bug report (issue #17 — macOS users
+                    // had no way to share it). Copy → clipboard; Save… → a .txt file.
+                    Button("Copy") { copyStrapLog() }
+                        .buttonStyle(.plain).font(StrandFont.mono).foregroundStyle(StrandPalette.accent)
+                    Button("Save…") { saveStrapLog() }
+                        .buttonStyle(.plain).font(StrandFont.mono).foregroundStyle(StrandPalette.accent)
+                }
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 2) {
@@ -182,5 +192,28 @@ struct LiveView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Strap-log export (issue #17 — let macOS users share the log for bug reports)
+
+    private func strapLogText() -> String {
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let header = "NOOP strap log — macOS\nApp: \(v)\nmacOS: "
+            + ProcessInfo.processInfo.operatingSystemVersionString + "\n"
+            + String(repeating: "-", count: 40) + "\n"
+        return header + live.log.joined(separator: "\n")
+    }
+
+    private func copyStrapLog() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(strapLogText(), forType: .string)
+    }
+
+    private func saveStrapLog() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "noop-strap-log.txt"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        try? strapLogText().write(to: url, atomically: true, encoding: .utf8)
     }
 }
