@@ -17,6 +17,18 @@ approximate; downloads are on the [Releases](https://github.com/NoopApp/noop/rel
 
 ---
 
+## 1.86 — Deep sleep no longer reads 0 minutes, and a smarter AI Coach
+
+- **Fixed (Mac and Android):** on-device sleep nights no longer show **0 minutes of deep sleep**. Deep
+  required a per-epoch HRV reading, which is often sparse on Bluetooth-synced nights (especially WHOOP
+  5/MG), so it was blocked entirely. It now falls back to the other depth signals (stillness, low HR,
+  regular breathing) when HRV isn't measurable that second, while still requiring genuinely high HRV
+  when it is. (#127, #129)
+- **Improved (Mac and Android):** the AI Coach now also sees your SpO₂, respiration, skin-temperature
+  deviation, steps and active energy — it previously summarized only recovery/strain/sleep/HRV/RHR. (#124)
+
+---
+
 ## 1.85 — Browse the last few days, interactive charts, and a Vital Signs screen (Android)
 
 - **New (Android):** browse the last **3 days** on Today, Sleep and Vital Signs — flip between Today,

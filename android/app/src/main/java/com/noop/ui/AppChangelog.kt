@@ -25,7 +25,7 @@ object AppChangelog {
      * Bump this when you add a release below. The "What's New" sheet shows automatically when the
      * stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
      */
-    const val CURRENT_VERSION = "1.85"
+    const val CURRENT_VERSION = "1.86"
 
     data class Release(
         val version: String,
@@ -36,6 +36,15 @@ object AppChangelog {
 
     /** Newest first. */
     val releases: List<Release> = listOf(
+        Release(
+            version = "1.86",
+            title = "Deep sleep no longer reads 0 minutes, and a smarter AI Coach",
+            date = "June 2026",
+            items = listOf(
+                "Fixed (Mac and Android): on-device sleep nights no longer show 0 minutes of deep sleep. Deep sleep required a per-epoch HRV reading, which is often sparse on Bluetooth-synced nights (especially WHOOP 5/MG), so it was getting blocked entirely. It now falls back to the other depth signals — stillness, low heart rate and regular breathing — when HRV isn't measurable that second, while still requiring genuinely high HRV when it is. (#127, #129)",
+                "Improved (Mac and Android): the AI Coach now also sees your SpO₂, respiration, skin-temperature deviation, steps and active energy in its summary — it previously had only recovery, strain, sleep, HRV and resting HR. (#124)",
+            ),
+        ),
         Release(
             version = "1.85",
             title = "Browse the last few days, interactive charts, and a Vital Signs screen (Android)",

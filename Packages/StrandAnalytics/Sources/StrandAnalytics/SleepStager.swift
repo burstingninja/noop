@@ -899,8 +899,13 @@ public enum SleepStager {
         let hrLow = hasHR && hrLo != nil && f.hr <= hrLo!
         let hrHigh = hasHR && hrHi != nil && f.hr >= hrHi!
 
-        // NOTE: HF omitted (no neurokit2). Parasympathetic tone = RMSSD only.
-        let parasympHigh = f.rmssd.isFinite && rmssdHi != nil && f.rmssd >= rmssdHi!
+        // NOTE: HF omitted (no neurokit2). Parasympathetic tone = RMSSD only. A MISSING per-epoch
+        // RMSSD (sparse R-R, common on BLE-offloaded nights and especially 5/MG) is treated as
+        // pro-deep rather than deep-blocking — mirroring how a missing respiration value is handled
+        // below — so those nights stop decoding 0 m of deep sleep despite a real depth signature
+        // (still + low HR + regular breathing). An epoch WITH a finite RMSSD must still clear the
+        // high-tone bar. (#127, #129)
+        let parasympOK = (!f.rmssd.isFinite) || (rmssdHi != nil && f.rmssd >= rmssdHi!)
 
         let hrvarHigh = f.hrVar.isFinite && hrvarHi != nil && f.hrVar >= hrvarHi!
         let cardiacActivated = hrHigh || hrvarHigh
@@ -914,8 +919,8 @@ public enum SleepStager {
 
         // WAKE: sustained motion + activated cardiac (or no HR to vet motion).
         if moving && (cardiacActivated || !hasHR) { return "wake" }
-        // DEEP: still + high parasympathetic tone + low HR + regular respiration.
-        if still && parasympHigh && hrLow && rrvRegular { return "deep" }
+        // DEEP: still + low HR + regular respiration, with high parasympathetic tone when measurable.
+        if still && parasympOK && hrLow && rrvRegular { return "deep" }
         // REM: still body + activated cardiac + irregular respiration.
         if still && cardiacActivated && rrvIrregular { return "rem" }
         // REM fallback when respiration unavailable: require BOTH cardiac signals.
