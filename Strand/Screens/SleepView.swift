@@ -36,6 +36,16 @@ struct SleepView: View {
     /// when it differs from the current inputs we rebuild the model.
     @State private var modelKey: SleepInputKey?
 
+    /// Which night the hero hypnogram shows: 0 = last night, N = N sleep-sessions back.
+    /// Snaps back to 0 whenever the data key changes — a stale offset would silently point
+    /// at a different session after a sync. The memoized trend `model` stays cached since
+    /// the trends are night-independent. (#160)
+    @State private var nightOffset = 0
+    /// Memoized decode of the NAVIGATED night (nil when `nightOffset == 0` — the hero reads
+    /// `model.night` then). Rebuilt only in the `nightOffset` / data-key onChange handlers;
+    /// `decodedNight` JSON-decodes, which must never run per body pass (1Hz HR ticks). (#160)
+    @State private var navNight: Night?
+
     var body: some View {
         // Resolve the memoized model for THIS render. `dataKey` is O(1)-ish (counts + last-row
         // identity), so comparing it every render is cheap. When it matches the cached key we
@@ -63,11 +73,22 @@ struct SleepView: View {
             .onChange(of: key) { newKey in
                 modelKey = newKey
                 model = buildModel()
+                // New data invalidates a navigated offset — the same offset would silently
+                // point at a different session. Snap back to last night. (#160)
+                nightOffset = 0
+                navNight = nil
+            }
+            // The navigated night is decoded once per ◀/▶ press, never per body pass —
+            // `decodedNight` JSON-decodes and body re-evaluates at 1Hz while HR streams. (#160)
+            .onChange(of: nightOffset) { newOffset in
+                navNight = newOffset == 0 ? nil : decodedNight(at: newOffset)
             }
             .onAppear {
                 if modelKey != key {
                     modelKey = key
                     model = resolved
+                    nightOffset = 0
+                    navNight = nil
                 }
             }
         }
@@ -77,40 +98,69 @@ struct SleepView: View {
 
     @ViewBuilder
     private func hero(_ model: SleepModel) -> some View {
-        let night = model.night
-        let s = night.stages
-        // Intervals are reconstructed ONCE in the model build, not on every body pass
-        // (Night.intervals is a computed property and was previously evaluated twice here).
-        let intervals = model.intervals
+        // Offset 0 reads the memoized latest night; navigated offsets read the cached
+        // `navNight` — never a fresh decode here (this runs on every 1Hz HR tick). When a
+        // navigated session decoded to no usable stages, the header stays on that REAL
+        // session's date/times with an honest placeholder in the chart slot — never the
+        // latest night silently rendered under a navigated label. (#160)
         VStack(alignment: .leading, spacing: NoopMetrics.gap) {
-            SectionHeader("Last night", overline: "Sleep",
-                          trailing: "\(night.dateLabel) · \(night.onsetText)–\(night.wakeText)")
-            ChartCard(
-                title: "Stage breakdown",
-                subtitle: "\(durationText(night.timeInBed)) in bed · \(efficiencyText(night)) efficiency"
-                    + (model.isPersistedHypnogram ? " · stages approximate (on-device)" : ""),
-                trailing: durationText(s.asleep),
-                height: NoopMetrics.chartHeight,
-                chart: {
-                    if intervals.count >= 2 {
-                        Hypnogram(intervals: intervals,
-                                  height: NoopMetrics.chartHeight,
-                                  showsStageAxis: true,
-                                  nightStart: night.onsetDate)
-                    } else {
-                        stageBar(s)
-                    }
-                },
-                footer: {
-                    ChartFooter([
-                        ("REM",   "\(durationText(s.rem)) · \(pct(s.rem, s.total))%"),
-                        ("Deep",  "\(durationText(s.deep)) · \(pct(s.deep, s.total))%"),
-                        ("Light", "\(durationText(s.light)) · \(pct(s.light, s.total))%"),
-                        ("Awake", "\(durationText(s.awake)) · \(pct(s.awake, s.total))%"),
-                    ])
-                }
-            )
+            if nightOffset == 0 {
+                nightNavHeader(trailing: headerLine(model.night))
+                stageCard(model.night, intervals: model.intervals)
+            } else if let night = navNight {
+                nightNavHeader(trailing: headerLine(night))
+                stageCard(night, intervals: night.intervals)
+            } else if let session = sessionRow(at: nightOffset) {
+                // Stage-less stub purely to reuse Night's date/time formatting.
+                let stub = Night(session: session, stages: Stages(awake: 0, light: 0, deep: 0, rem: 0))
+                nightNavHeader(trailing: headerLine(stub))
+                ChartCard(
+                    title: "Stage breakdown",
+                    subtitle: "\(durationText(Double(session.endTs - session.startTs) / 60.0)) in bed",
+                    height: NoopMetrics.chartHeight,
+                    chart: { noStagePlaceholder }
+                )
+            }
         }
+    }
+
+    /// The stage-breakdown ChartCard for a decoded night: hypnogram when intervals
+    /// reconstruct, else the proportional stage bar. Intervals are passed in so offset 0
+    /// uses the memoized `model.intervals` rather than re-deriving them. (#160)
+    @ViewBuilder
+    private func stageCard(_ night: Night, intervals: [SleepInterval]) -> some View {
+        let s = night.stages
+        let isPersisted = (night.realSegments?.count ?? 0) >= 2
+        ChartCard(
+            title: "Stage breakdown",
+            subtitle: "\(durationText(night.timeInBed)) in bed · \(efficiencyText(night)) efficiency"
+                + (isPersisted ? " · stages approximate (on-device)" : ""),
+            trailing: durationText(s.asleep),
+            height: NoopMetrics.chartHeight,
+            chart: {
+                if intervals.count >= 2 {
+                    Hypnogram(intervals: intervals,
+                              height: NoopMetrics.chartHeight,
+                              showsStageAxis: true,
+                              nightStart: night.onsetDate)
+                } else {
+                    stageBar(s)
+                }
+            },
+            footer: {
+                ChartFooter([
+                    ("REM",   "\(durationText(s.rem)) · \(pct(s.rem, s.total))%"),
+                    ("Deep",  "\(durationText(s.deep)) · \(pct(s.deep, s.total))%"),
+                    ("Light", "\(durationText(s.light)) · \(pct(s.light, s.total))%"),
+                    ("Awake", "\(durationText(s.awake)) · \(pct(s.awake, s.total))%"),
+                ])
+            }
+        )
+    }
+
+    /// "date · onset–wake" — the nav header's trailing line.
+    private func headerLine(_ night: Night) -> String {
+        "\(night.dateLabel) · \(night.onsetText)–\(night.wakeText)"
     }
 
     /// Full-width proportional stacked stage bar (fallback when no intervals).
@@ -395,8 +445,17 @@ struct SleepView: View {
     /// dict was decoded before, so a Bluetooth-only user's night vanished from this tab entirely
     /// while Intelligence showed it (#77). Computed nights also carry their REAL timeline now —
     /// the hypnogram draws genuine segments instead of the synthetic reconstruction.
-    private var latestNight: Night? {
-        guard let s = repo.sleeps.last else { return nil }
+    private var latestNight: Night? { decodedNight(at: 0) }
+
+    /// The night `offset` sleep-sessions back from the most recent (0 = last night), decoded into
+    /// a `Night`. Backs the hero's ◀/▶ navigation via the `navNight` cache — JSON-decodes, so it
+    /// only runs from `buildModel()` and the onChange handlers, never per render. The index clamp
+    /// is a belt-and-braces guard; the offset itself resets to 0 on every data change. (#160)
+    private func decodedNight(at offset: Int) -> Night? {
+        let sleeps = repo.sleeps
+        guard !sleeps.isEmpty else { return nil }
+        let idx = min(max(sleeps.count - 1 - offset, 0), sleeps.count - 1)
+        let s = sleeps[idx]
         if let stages = decodeStages(s.stagesJSON), stages.total > 0 {
             return Night(session: s, stages: stages)
         }
@@ -404,6 +463,45 @@ struct SleepView: View {
             return Night(session: s, stages: seg.stages, realSegments: seg.intervals)
         }
         return nil
+    }
+
+    /// The raw session row `offset` back from the newest, clamped to bounds. Backs the honest
+    /// no-stage-data header when a navigated session doesn't decode to usable stages. (#160)
+    private func sessionRow(at offset: Int) -> CachedSleepSession? {
+        let sleeps = repo.sleeps
+        guard !sleeps.isEmpty else { return nil }
+        return sleeps[min(max(sleeps.count - 1 - offset, 0), sleeps.count - 1)]
+    }
+
+    /// Header above the hypnogram with ◀/▶ to browse past nights. ◀ goes older (increasing offset),
+    /// ▶ goes newer; each is disabled at its bound. The canonical SectionHeader carries the
+    /// hierarchy so the hero reads like every other section. (#160)
+    @ViewBuilder
+    private func nightNavHeader(trailing: String) -> some View {
+        let lastIndex = max(repo.sleeps.count - 1, 0)
+        let title: LocalizedStringKey = nightOffset == 0 ? "Last night"
+            : (nightOffset == 1 ? "1 night ago" : "\(nightOffset) nights ago")
+        HStack(spacing: 12) {
+            Button { if nightOffset < lastIndex { nightOffset += 1 } } label: {
+                Image(systemName: "chevron.left")
+                    .font(StrandFont.headline)
+                    .foregroundStyle(nightOffset >= lastIndex ? StrandPalette.textTertiary : StrandPalette.accent)
+            }
+            .buttonStyle(.plain)
+            .disabled(nightOffset >= lastIndex)
+            .accessibilityLabel("Previous night")
+
+            SectionHeader(title, overline: "Sleep", trailing: trailing)
+
+            Button { if nightOffset > 0 { nightOffset -= 1 } } label: {
+                Image(systemName: "chevron.right")
+                    .font(StrandFont.headline)
+                    .foregroundStyle(nightOffset == 0 ? StrandPalette.textTertiary : StrandPalette.accent)
+            }
+            .buttonStyle(.plain)
+            .disabled(nightOffset == 0)
+            .accessibilityLabel("Next night")
+        }
     }
 
     /// Mean total sleep duration (minutes) across nights with data — the "typical".
@@ -565,6 +663,16 @@ struct SleepView: View {
     private var sparsePlaceholder: some View {
         Text("Not enough nights yet.")
             .font(StrandFont.subhead)
+            .foregroundStyle(StrandPalette.textTertiary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .background(StrandPalette.surfaceInset, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    /// Hero chart slot for a NAVIGATED session with no decodable stages — honest about the
+    /// gap instead of rendering the latest night under a navigated label. (#160)
+    private var noStagePlaceholder: some View {
+        Text("No stage data recorded for this night.")
+            .font(StrandFont.footnote)
             .foregroundStyle(StrandPalette.textTertiary)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .background(StrandPalette.surfaceInset, in: RoundedRectangle(cornerRadius: 12, style: .continuous))

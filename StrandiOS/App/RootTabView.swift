@@ -47,6 +47,9 @@ struct RootTabView: View {
                 Section("Data") {
                     link("Apple Health", "heart.fill") { AppleHealthView() }
                     link("Data Sources", "externaldrive.fill") { DataSourcesView() }
+                    // #155: HealthKit-free Apple Health path for sideloaded installs (Siri Shortcut
+                    // reads the opt-in Documents/noop_sync.txt drop file).
+                    link("Shortcuts Export", "square.and.arrow.up.fill") { ShortcutExportSettingsView() }
                 }
                 Section("App") {
                     link("Automations", "wand.and.stars") { AutomationsView() }

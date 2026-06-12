@@ -225,7 +225,12 @@ public enum AnalyticsEngine {
                 if delta < 0 { delta += 65_536 }  // u16 wraparound
                 if delta >= 1 && delta <= maxStepDelta { total += delta }  // drop resets
             }
-            return total > 0 ? total : nil
+            if total <= 0 { return nil }
+            // @57 counts motion ticks, not validated steps — the 5/MG counter overcounts. Divide
+            // by the user-calibrated ticks-per-step (default 1.0 = raw pass-through; floor 0.5 so
+            // a bad pref can at most double, never explode, the total). (#139)
+            let scaled = Int((Double(total) / max(profile.stepTicksPerStep, 0.5)).rounded())
+            return scaled > 0 ? scaled : nil
         }()
 
         // ── Daily calories (APPROXIMATE, HR-only whole-day estimate) ──────────

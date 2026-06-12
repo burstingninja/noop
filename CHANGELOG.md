@@ -17,6 +17,31 @@ approximate; downloads are on the [Releases](https://github.com/NoopApp/noop/rel
 
 ---
 
+## 2.1.0 — Browse past nights, a smarter Coach, workout times, battery & more
+
+- **New (Mac, iOS and Android):** the **Sleep** screen now lets you **browse past nights** — tap ◀/▶ on
+  the hypnogram to step back through every recorded night, not just last night. (#160, thanks @FrostDev7)
+- **Fixed (Android):** the **AI Coach** now sees the recovery, strain, sleep and HRV that NOOP computes
+  **on-device** for live-strap users — it had only been reading imported rows, so a Bluetooth-only user's
+  Coach wrongly claimed it had no data. (#124)
+- **Fixed (Android):** your imported **step count now updates for *today***, not just past days — NOOP
+  refreshes today's Health Connect steps when you open the app. (#150)
+- **New (Mac, iOS and Android):** workouts now show their **start–end time** (e.g. 13:00–13:30), and the
+  Today screen shows your **strap's battery level**. (#157, #159)
+- **New (Mac, iOS and Android):** a **Step calibration** setting — if your step count runs high on a
+  WHOOP 5.0/MG, set how many motion-counter ticks equal one real step (the default leaves counts
+  unchanged). (#139)
+- **New (Mac, iOS and Android):** **Breathe** sessions now show your **HRV response** — how much your
+  RMSSD rose from start to finish, and the peak — so you can see the calming effect land.
+- **New (iOS):** an opt-in **"Export for Shortcuts"** that writes your heart rate, HRV and steps to a file
+  an Apple Shortcut can log into Apple Health — a HealthKit-free path for sideloaded installs. (#155,
+  thanks @alexsas00)
+- **Hardened (Mac, iOS and Android):** the archived-sleep retro-decode now **retries on the next launch**
+  if a save fails midway, instead of giving up — recovered history is never lost to a transient error.
+  (#152, thanks @ryanbr)
+
+---
+
 ## 2.0 — Clearer answers when your strap isn't banking history
 
 - **Improved (Mac, iOS and Android):** your strap log now records what a sync **saved**, not only what

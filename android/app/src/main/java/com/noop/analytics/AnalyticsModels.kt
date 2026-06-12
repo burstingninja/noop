@@ -40,6 +40,12 @@ data class UserProfile(
     val age: Double = 30.0,
     /** "male" | "female" | "nonbinary". */
     val sex: String = "nonbinary",
+    /**
+     * Counter ticks per real step for the @57 motion counter (#139). The WHOOP 5/MG
+     * counter overcounts and its true tick rate is unknown, so the daily-steps total
+     * divides by this. 1.0 = raw pass-through (default); the engine clamps ≥ 0.5.
+     */
+    val stepTicksPerStep: Double = 1.0,
 )
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -27,7 +27,9 @@ import kotlin.math.roundToInt
  */
 class AiCoach(private val repo: WhoopRepository) {
 
-    /** The device key the rest of the app reads/writes daily metrics under. */
+    /** The device key the rest of the app reads/writes daily metrics under. Coach reads go
+     *  through the MERGED raw+computed view ([WhoopRepository.daysMerged]) — the same per-field
+     *  coalesce every screen uses — so on-device "-noop" scores are visible too (#124). */
     private val deviceId = "my-whoop"
 
     private val http: OkHttpClient = OkHttpClient.Builder()
@@ -70,7 +72,9 @@ class AiCoach(private val repo: WhoopRepository) {
 
         // Include the user's data ONLY with explicit consent; otherwise a note, never their numbers.
         val grounded = if (consent) {
-            val days = runCatching { repo.days(deviceId) }.getOrDefault(emptyList())
+            // Merged read, NOT raw days(): a live-strap user's scores live under "my-whoop-noop"
+            // and a raw read misses them — the coach then claimed it had no data. (#124)
+            val days = runCatching { repo.daysMerged(deviceId) }.getOrDefault(emptyList())
             injectContext(history, buildContext(days))
         } else {
             injectContext(history, NO_CONSENT_NOTE)
@@ -165,7 +169,7 @@ class AiCoach(private val repo: WhoopRepository) {
                 "to sync their strap so future advice can reference their real metrics."
         }
 
-        // days() returns oldest-first; take the most recent up to 30 for averages, 14 for the table.
+        // daysMerged() returns oldest-first; take the most recent up to 30 for averages, 14 for the table.
         val last30 = days.takeLast(30)
         val last14 = days.takeLast(14)
 

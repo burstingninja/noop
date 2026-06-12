@@ -41,6 +41,7 @@ import com.noop.analytics.ReadinessEngine
 import com.noop.data.AppleDaily
 import com.noop.data.DailyMetric
 import com.noop.data.WorkoutRow
+import com.noop.ingest.HealthConnectImporter
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -110,6 +111,14 @@ fun TodayScreen(viewModel: AppViewModel, onSupport: () -> Unit = {}) {
     // moves. On-device WHOOP 5/MG steps still take precedence. (#150)
     var importedStepsForDay by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(days, selectedDayKey) {
+        // Today's steps keep moving after the manual one-shot HC import, so the stored row goes
+        // stale within minutes — top it up with ONE live StepsRecord read before the stored-row
+        // read below. Best-effort: any HC hiccup just falls through to whatever is stored. (#150)
+        if (selectedDayOffset == 0) {
+            try {
+                HealthConnectImporter.refreshTodaySteps(context, viewModel.repo)
+            } catch (_: Exception) { /* best-effort */ }
+        }
         importedStepsForDay = stepsForDay(
             viewModel.repo.appleDaily("apple-health", "0000-01-01", "9999-12-31"),
             viewModel.repo.appleDaily("health-connect", "0000-01-01", "9999-12-31"),
@@ -227,7 +236,9 @@ fun TodayScreen(viewModel: AppViewModel, onSupport: () -> Unit = {}) {
         MetricGrid(displayMetric, window, recoveryCalibration, unitSystem, weightKg, profileWeightKg, importedStepsForDay)
         HeartRateTrendCard(viewModel, days, selectedDay)
         TodayWorkoutsSection(footer.recentWorkouts)
-        TodaySourcesSection(footer)
+        // Strap battery only while the link is up AND a real reading exists — a stale % from a
+        // dropped connection must not present as live (#159).
+        TodaySourcesSection(footer, strapBatteryPct = if (live.connected) live.batteryPct?.roundToInt() else null)
     }
 }
 
@@ -560,15 +571,18 @@ private fun TodayWorkoutsSection(workouts: List<WorkoutRow>) {
 }
 
 @Composable
-private fun TodaySourcesSection(footer: TodayFooterState) {
+private fun TodaySourcesSection(footer: TodayFooterState, strapBatteryPct: Int? = null) {
     SectionHeader("Data Sources", overline = "Provenance")
     NoopCard {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SourceRow(
                 badge = "Whoop",
                 tint = Palette.accent,
-                present = (footer.whoopDays ?: 0) > 0,
+                // A live battery reading means the strap IS connected, even before the first banked
+                // night — don't contradict it with "Not connected" (#159).
+                present = (footer.whoopDays ?: 0) > 0 || strapBatteryPct != null,
                 detail = countDetail(footer.whoopDays, footer.whoopWorkouts, "workouts"),
+                batteryPct = strapBatteryPct,
             )
             Box(
                 modifier = Modifier
@@ -604,9 +618,16 @@ private fun SourceRow(
     tint: Color,
     present: Boolean,
     detail: String,
+    batteryPct: Int? = null,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         SourceBadge(badge, tint = if (present) tint else Palette.textTertiary)
+        // Compact strap-battery readout beside the source badge — same pill + tone bands as the
+        // Settings Strap section; absent entirely when there's no live reading (#159).
+        batteryPct?.let { pct ->
+            Spacer(Modifier.width(8.dp))
+            StatePill(title = "$pct%", tone = batteryPillTone(pct), showsDot = false)
+        }
         Spacer(Modifier.weight(1f))
         Text(
             text = if (present) detail else "Not connected",
@@ -937,10 +958,19 @@ private const val NO_DATA = "No Data"
 
 private val workoutDateFmt: DateTimeFormatter =
     DateTimeFormatter.ofPattern("d MMM", Locale.US).withZone(ZoneId.systemDefault())
+private val workoutTimeFmt: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("HH:mm", Locale.US).withZone(ZoneId.systemDefault())
 
 private fun countDetail(days: Int?, workouts: Int?, workoutLabel: String): String {
     if (days == null || workouts == null) return "Counting..."
     return "${grouped(days)} days · ${grouped(workouts)} $workoutLabel"
+}
+
+/** Same bands as the Settings Strap battery pill, so the % reads the same colour everywhere (#159). */
+private fun batteryPillTone(pct: Int): StrandTone = when {
+    pct <= 15 -> StrandTone.Critical
+    pct <= 30 -> StrandTone.Warning
+    else -> StrandTone.Positive
 }
 
 private fun workoutDuration(row: WorkoutRow): String {
@@ -954,9 +984,15 @@ private fun workoutDuration(row: WorkoutRow): String {
     }
 }
 
+/** "d MMM · HH:mm–HH:mm" (#157); start-only when the end isn't after the start (zero/unknown span). */
 private fun workoutCaption(row: WorkoutRow): String {
     val date = workoutDateFmt.format(Instant.ofEpochSecond(row.startTs))
-    return row.avgHr?.let { "$date · $it bpm" } ?: date
+    val start = workoutTimeFmt.format(Instant.ofEpochSecond(row.startTs))
+    return if (row.endTs > row.startTs) {
+        "$date · $start–${workoutTimeFmt.format(Instant.ofEpochSecond(row.endTs))}"
+    } else {
+        "$date · $start"
+    }
 }
 
 private fun grouped(value: Int): String =

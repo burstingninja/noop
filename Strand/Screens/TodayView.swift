@@ -416,6 +416,7 @@ struct TodayView: View {
                         present: !appleDays.isEmpty,
                         detail: "\(appleDays.count) days · \(workouts.filter { $0.source == "apple-health" }.count) workouts"
                     )
+                    strapBatteryRow
                     Divider().overlay(StrandPalette.hairline)
                     strapSyncRow
                 }
@@ -466,6 +467,51 @@ struct TodayView: View {
                     }
                 }
             }
+        }
+    }
+
+    /// Strap battery on the dashboard (#159) — the live reading the keep-alive refreshes, so a glance
+    /// covers charge without opening Live. Rendered ONLY while a strap is connected AND a reading
+    /// exists; otherwise the row (and its divider) isn't there at all — no empty state.
+    @ViewBuilder
+    private var strapBatteryRow: some View {
+        if live.connected, let pct = live.batteryPct {
+            Divider().overlay(StrandPalette.hairline)
+            HStack(spacing: 10) {
+                SourceBadge("Strap battery", tint: batteryTint(pct))
+                Spacer()
+                HStack(spacing: 5) {
+                    Image(systemName: batterySymbol(pct))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(batteryTint(pct))
+                    Text("\(Int(pct.rounded()))%")
+                        .font(StrandFont.captionNumber)
+                        .foregroundStyle(StrandPalette.textSecondary)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Strap battery \(Int(pct.rounded())) percent\(live.charging == true ? ", charging" : "")")
+            }
+        }
+    }
+
+    /// Battery tint — same thresholds as the menu-bar stat (MenuBarContent.batteryTone).
+    private func batteryTint(_ pct: Double) -> Color {
+        switch pct {
+        case ..<15: return StrandPalette.statusCritical
+        case ..<35: return StrandPalette.statusWarning
+        default:    return StrandPalette.statusPositive
+        }
+    }
+
+    /// Level-banded battery glyph; the bolt variant when the strap reports charging.
+    private func batterySymbol(_ pct: Double) -> String {
+        if live.charging == true { return "battery.100.bolt" }
+        switch pct {
+        case ..<13: return "battery.0"
+        case ..<38: return "battery.25"
+        case ..<63: return "battery.50"
+        case ..<88: return "battery.75"
+        default:    return "battery.100"
         }
     }
 
@@ -613,13 +659,18 @@ struct TodayView: View {
         return "\(mins)m"
     }
 
+    /// "d MMM · HH:mm–HH:mm", start-only when the row has no real end (#157). The "· N bpm"
+    /// segment was dropped: the StatTile caption is lineLimit(1) and date + range + bpm clips —
+    /// avg HR remains on the Workouts screen.
     private func workoutCaption(_ w: WorkoutRow) -> String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "d MMM"
-        let date = f.string(from: Date(timeIntervalSince1970: TimeInterval(w.startTs)))
-        if let hr = w.avgHr { return "\(date) · \(hr) bpm" }
-        return date
+        let start = Date(timeIntervalSince1970: TimeInterval(w.startTs))
+        let date = f.string(from: start)
+        guard w.endTs > w.startTs else { return "\(date) · \(Self.hrTimeFmt.string(from: start))" }
+        let end = Date(timeIntervalSince1970: TimeInterval(w.endTs))
+        return "\(date) · \(Self.hrTimeFmt.string(from: start))–\(Self.hrTimeFmt.string(from: end))"
     }
 
     /// Thousands-grouped integer string (steps / calories).
@@ -641,7 +692,8 @@ struct TodayView: View {
     }()
 
     /// Local wall-clock time ("HH:mm") for the HR trend's x-axis / tooltip — the chart spans one day,
-    /// so it must show times, not the day-granularity default ("EEE d MMM").
+    /// so it must show times, not the day-granularity default ("EEE d MMM"). Also formats the
+    /// workout-tile caption's time range (#157).
     static let hrTimeFmt: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")

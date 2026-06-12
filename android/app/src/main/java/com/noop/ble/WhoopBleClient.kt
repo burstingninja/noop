@@ -185,9 +185,6 @@ class WhoopBleClient(
         /** Cap on the in-app strap-log ring buffer (for the "Share strap log" diagnostics export). */
         private const val LOG_BUFFER_MAX = 2000
 
-        /** Bump whenever a historical layout is added/changed so the reject archive re-decodes once more
-         *  (#151). 2 = the WHOOP 4.0 v25 layout (v1.95). Matches the Swift BLEManager constant. */
-        private const val REJECT_REPLAY_DECODER_VERSION = 2
 
         // MARK: GATT UUIDs (authoritative, from BLEManager.swift / FINDINGS.md).
         //
@@ -465,14 +462,17 @@ class WhoopBleClient(
 
     init {
         // Retro-decode (#151): when the decoder gains a historical layout (WHOOP 4.0 v25), re-run every
-        // archived undecodable frame through it ONCE and insert whatever now decodes — the only path by
-        // which already-acked, strap-freed history backfills after an update. Version-gated so it runs
-        // once per decoder version; idempotent if it re-runs (offloaded rows dedupe by ts). Mirrors the
-        // Swift BLEManager gate. (This client is a process singleton, so init runs once per process.)
+        // archived undecodable frame through it and insert whatever now decodes — the only path by
+        // which already-acked, strap-freed history backfills after an update. Runs once per APP version
+        // (no manual decoder constant to forget to bump, #152); idempotent if it re-runs (offloaded rows
+        // dedupe by ts), and the gate holds on a failed insert so the records retry next launch. Mirrors
+        // the Swift BLEManager gate. (This client is a process singleton, so init runs once per process.)
         ioScope.launch {
-            val rows = rawHistoryArchive.replayIfNeeded(repository, deviceId, REJECT_REPLAY_DECODER_VERSION)
+            val rows = rawHistoryArchive.replayIfNeeded(
+                repository, deviceId, com.noop.ui.AppChangelog.CURRENT_VERSION,
+            )
             if (rows > 0) {
-                log("Backfill: retro-decoded $rows record(s) from the reject archive after a decoder update.")
+                log("Backfill: retro-decoded $rows record(s) from the reject archive after an update.")
             }
         }
     }
@@ -521,6 +521,7 @@ class WhoopBleClient(
                     heightCm = profileStore.heightCm,
                     age = profileStore.age.toDouble(),
                     sex = profileStore.sex,
+                    stepTicksPerStep = profileStore.stepTicksPerStep,
                 )
                 runCatching {
                     IntelligenceEngine.analyzeRecent(

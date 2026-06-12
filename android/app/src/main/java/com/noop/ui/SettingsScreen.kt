@@ -128,6 +128,16 @@ class ProfileStore(private val prefs: SharedPreferences) {
         get() = prefs.getInt(KEY_HRMAX, 0).coerceIn(0, 230)
         set(v) = prefs.edit().putInt(KEY_HRMAX, v.coerceIn(0, 230)).apply()
 
+    /**
+     * Step-calibration divisor (#139): counter ticks per real step for the @57 motion
+     * counter. 1.0 = raw pass-through (default — no behavior change). Clamped 0.5–4.0.
+     */
+    var stepTicksPerStep: Double
+        get() = prefs.getFloat(KEY_STEP_SCALE, 1f).toDouble().coerceIn(STEP_SCALE_MIN, STEP_SCALE_MAX)
+        set(v) = prefs.edit()
+            .putFloat(KEY_STEP_SCALE, v.coerceIn(STEP_SCALE_MIN, STEP_SCALE_MAX).toFloat())
+            .apply()
+
     /** The auto (Tanaka) HR-max for the current age. */
     val hrMaxAuto: Int get() = Zones.hrMaxTanaka(age)
 
@@ -141,6 +151,7 @@ class ProfileStore(private val prefs: SharedPreferences) {
         private const val KEY_WEIGHT = "weight_kg"
         private const val KEY_HEIGHT = "height_cm"
         private const val KEY_HRMAX = "hr_max_override"
+        private const val KEY_STEP_SCALE = "step_ticks_per_step"
 
         private const val AGE_MIN = 13
         private const val AGE_MAX = 100
@@ -148,6 +159,8 @@ class ProfileStore(private val prefs: SharedPreferences) {
         private const val WEIGHT_MAX = 250.0
         private const val HEIGHT_MIN = 120.0
         private const val HEIGHT_MAX = 230.0
+        private const val STEP_SCALE_MIN = 0.5
+        private const val STEP_SCALE_MAX = 4.0
 
         fun from(context: Context): ProfileStore =
             ProfileStore(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE))
@@ -378,6 +391,23 @@ fun SettingsScreen(vm: AppViewModel) {
                         )
                     }
                 }
+                RowDivider()
+                // Step calibration (#139): daily steps = @57 counter ticks ÷ this divisor.
+                // 1.0 = raw pass-through until the true 5/MG tick rate is known.
+                FormRow(label = "Step calibration") {
+                    StepperField(
+                        value = "%.1f".format(profile.stepTicksPerStep),
+                        accessibility = "Step calibration, %.1f counter ticks per step"
+                            .format(profile.stepTicksPerStep),
+                        onMinus = { mutate { profile.stepTicksPerStep -= 0.1 } },
+                        onPlus = { mutate { profile.stepTicksPerStep += 0.1 } },
+                    )
+                }
+                Text(
+                    "Counter ticks per step — leave at 1.0 unless your steps run high. Walk a known 1,000 steps and divide NOOP's count by the real count to get your value.",
+                    style = NoopType.footnote,
+                    color = Palette.textTertiary,
+                )
             }
         }
 

@@ -12,6 +12,8 @@ import org.json.JSONObject
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import kotlin.math.max
+import kotlin.math.roundToLong
 
 /*
  * AnalyticsEngine.kt — orchestrator producing DailyMetric + sleep-session results.
@@ -229,7 +231,13 @@ object AnalyticsEngine {
                 if (delta < 0) delta += 65_536 // u16 wraparound
                 if (delta in 1..maxStepDelta) total += delta // drop implausible deltas as resets
             }
-            if (total > 0L) total.coerceAtMost(Int.MAX_VALUE.toLong()).toInt() else null
+            if (total <= 0L) return@run null
+            // @57 counts motion ticks, not validated steps — the 5/MG counter overcounts. Divide
+            // by the user-calibrated ticks-per-step (default 1.0 = raw pass-through; floor 0.5 so
+            // a bad pref can at most double, never explode, the total). (#139)
+            val scaled = (total.toDouble() / max(profile.stepTicksPerStep, 0.5)).roundToLong()
+                .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            if (scaled > 0) scaled else null
         }
 
         // ── Daily calories (APPROXIMATE, HR-only whole-day estimate) ──────────

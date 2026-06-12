@@ -396,7 +396,7 @@ struct WorkoutsView: View {
                 Text(dateLabel(row.startTs))
                     .font(StrandFont.subhead)
                     .foregroundStyle(StrandPalette.textPrimary)
-                Text(timeLabel(row.startTs))
+                Text(timeRangeLabel(row.startTs, row.endTs))
                     .font(StrandFont.footnote)
                     .foregroundStyle(StrandPalette.textTertiary)
             }
@@ -599,6 +599,11 @@ struct WorkoutsView: View {
     }
     private func timeLabel(_ ts: Int) -> String {
         Self.timeFmt.string(from: Date(timeIntervalSince1970: TimeInterval(ts)))
+    }
+
+    /// "HH:mm–HH:mm" when the row carries a real end, start-only otherwise (#157).
+    private func timeRangeLabel(_ start: Int, _ end: Int) -> String {
+        end > start ? "\(timeLabel(start))–\(timeLabel(end))" : timeLabel(start)
     }
 
     private func durationLabel(_ s: Double?) -> String {

@@ -134,6 +134,25 @@ struct SettingsView: View {
                                              : StrandPalette.textTertiary)
                     }
                 }
+                rowDivider
+                // Step calibration (#139): daily steps = @57 counter ticks ÷ this divisor.
+                // 1.0 = raw pass-through until the true 5/MG tick rate is known.
+                FormRow(label: "Step calibration") {
+                    HStack(spacing: 10) {
+                        Text(String(format: "%.1f", profile.stepTicksPerStep))
+                            .font(StrandFont.bodyNumber)
+                            .foregroundStyle(StrandPalette.textPrimary)
+                            .frame(minWidth: 44, alignment: .trailing)
+                        Stepper("Step calibration",
+                                value: $profile.stepTicksPerStep, in: 0.5...4.0, step: 0.1)
+                            .labelsHidden()
+                            .accessibilityLabel("Step calibration, \(String(format: "%.1f", profile.stepTicksPerStep)) counter ticks per step")
+                    }
+                }
+                Text("Counter ticks per step — leave at 1.0 unless your steps run high. Walk a known 1,000 steps and divide NOOP's count by the real count to get your value.")
+                    .font(StrandFont.footnote)
+                    .foregroundStyle(StrandPalette.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
