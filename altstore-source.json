@@ -18,6 +18,15 @@
       "screenshotURLs": [],
       "versions": [
         {
+          "version": "2.8.6",
+          "buildVersion": "49",
+          "date": "2026-06-13",
+          "localizedDescription": "iPhone diagnostics + expectations, clearer labels, journal fix, v26 HR notch.",
+          "downloadURL": "https://github.com/NoopApp/noop/releases/download/v2.8.6/NOOP-v2.8.6-ios.ipa",
+          "size": 5872479,
+          "minOSVersion": "17.0"
+        },
+        {
           "version": "2.8.5",
           "buildVersion": "48",
           "date": "2026-06-13",
@@ -163,12 +172,12 @@
           "NSHealthUpdateUsageDescription": "NOOP writes the metrics it computes from your strap back into Apple Health, on-device and only when you allow it."
         }
       },
-      "version": "2.8.5",
-      "buildVersion": "48",
+      "version": "2.8.6",
+      "buildVersion": "49",
       "versionDate": "2026-06-13",
-      "versionDescription": "iPhone import fix (#179) + store self-heal after cross-platform restore (#222).",
-      "downloadURL": "https://github.com/NoopApp/noop/releases/download/v2.8.5/NOOP-v2.8.5-ios.ipa",
-      "size": 5842715,
+      "versionDescription": "iPhone diagnostics + expectations, clearer labels, journal fix, v26 HR notch.",
+      "downloadURL": "https://github.com/NoopApp/noop/releases/download/v2.8.6/NOOP-v2.8.6-ios.ipa",
+      "size": 5872479,
       "minOSVersion": "17.0"
     }
   ],
