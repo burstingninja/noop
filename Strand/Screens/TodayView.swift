@@ -95,6 +95,10 @@ struct TodayView: View {
     // trend and Rest score) resolves to the selected day instead of always showing today. Mirrors the
     // Android TodayScreen.selectedDayOffset. Loads re-run when this changes (see .task(id:)).
     @State private var selectedDayOffset = 0
+    // #605: one-shot guard so the dashboard auto-lands on the most recent day WITH data the first time it
+    // opens to an empty today (fresh install, or a strap mid-backfill whose newest banked day is older than
+    // today). After the single auto-land the user can chevron freely without it snapping forward again.
+    @State private var didAutoLandLatest = false
     // iOS top-bar state: the date-jump popover and the profile/settings sheet.
     @State private var showDayPicker = false
     @State private var showSettings = false
@@ -2160,6 +2164,20 @@ struct TodayView: View {
             : Int((Calendar.current.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart).timeIntervalSince1970)
         hrPoints = await repo.hrBuckets(from: windowStart, to: windowEnd, bucketSeconds: 300)
             .map { TrendPoint(date: Date(timeIntervalSince1970: TimeInterval($0.ts)), value: $0.bpm) }
+
+        // #605: if today itself has no HR yet, land the dashboard on the most recent day that DOES have
+        // data rather than presenting an empty graph (the top fresh-strap complaint). One-shot — changing
+        // selectedDayOffset re-runs this load for the landed day via .task(id:); the guard stops it
+        // re-evaluating, so the user can chevron back to today freely. Mirrors the Deep Timeline (#597).
+        if !didAutoLandLatest, selectedDayOffset == 0, hrPoints.isEmpty,
+           let latest = await repo.latestDataDayStart() {
+            didAutoLandLatest = true
+            let cal = Calendar.current
+            let todayStart = cal.startOfDay(for: Repository.logicalDay(Date()))
+            let latestStart = cal.startOfDay(for: latest)
+            let back = cal.dateComponents([.day], from: latestStart, to: todayStart).day ?? 0
+            if back > 0 { selectedDayOffset = back; return }
+        }
 
         // In-progress Effort for TODAY (#402): score today's strain over the SAME window the HR curve
         // above shows (logical-day midnight → now) so the gauge tracks the day live instead of lagging

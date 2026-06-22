@@ -145,6 +145,26 @@ fun TodayScreen(
     // still resolves to the prior calendar day's banked row instead of an empty new-calendar-day row
     // that blanks the dashboard (#144). Past offsets count back from this anchor. Presentation-only.
     val todayDate = logicalDayNow()
+    // #605: the first time the dashboard opens to a today that has NO heart-rate data yet (fresh install,
+    // or a strap mid-backfill whose newest banked day is older than today), land on the most recent day
+    // that DOES have data instead of an empty graph. One-shot via the guard, so the user can chevron back
+    // to today freely. Parity with the iOS dashboard + the Deep Timeline's open-on-latest (#597).
+    var didAutoLandLatest by remember { mutableStateOf(false) }
+    LaunchedEffect(days) {
+        if (didAutoLandLatest || selectedDayOffset != 0) return@LaunchedEffect
+        val zone = ZoneId.systemDefault()
+        val todayStart = todayDate.atStartOfDay(zone).toEpochSecond()
+        val nowSec = System.currentTimeMillis() / 1000
+        val todayHr = runCatching { viewModel.repo.hrBuckets("my-whoop", todayStart, nowSec, 300L) }
+            .getOrDefault(emptyList())
+        didAutoLandLatest = true
+        if (todayHr.isNotEmpty()) return@LaunchedEffect
+        val latestTs = runCatching { viewModel.repo.latestHrSampleTs("my-whoop") }.getOrNull()
+            ?: return@LaunchedEffect
+        val latestDay = logicalDay(java.time.Instant.ofEpochSecond(latestTs).atZone(zone))
+        val back = java.time.temporal.ChronoUnit.DAYS.between(latestDay, todayDate).toInt()
+        if (back > 0) selectedDayOffset = back
+    }
     val selectedDay = remember(selectedDayOffset, todayDate) { todayDate.minusDays(selectedDayOffset.toLong()) }
     // The key the day-scoped read-outs (Rest score, HR window, sleep band) key on. At offset 0 it
     // follows the resolver's `today?.day` so it tracks the row actually surfaced — including the non-UTC
