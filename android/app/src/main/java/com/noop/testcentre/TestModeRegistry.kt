@@ -45,7 +45,9 @@ data class TestMode(
  *  TestModeRegistry; same ids/titles/captures, verified by [TestModeRegistryParityTest]. */
 object TestModeRegistry {
 
-    val all: List<TestMode> = listOf(sleep(), battery())
+    val all: List<TestMode> = listOf(
+        sleep(), connection(), workouts(), display(), dataImport(), steps(), battery(), recovery(), hrv(),
+    )
 
     fun mode(d: TestDomain): TestMode? = all.firstOrNull { it.domain == d }
 
@@ -68,6 +70,75 @@ object TestModeRegistry {
         includesScreenshot = false, requires5MG = false,
     )
 
+    private fun connection() = TestMode(
+        domain = TestDomain.CONNECTION, title = "Connection & Sync",
+        blurb = "Turn this on if the strap keeps dropping or won't finish a sync.",
+        icon = "ic_antenna", priority = TestPriority.HIGH,
+        captures = listOf("connectTiming", "bondState", "frameTiming", "reconnectChurn", "offloadProgress",
+            "offloadStalls", "firmwareDecode", "clockDrift", "otherCentral"),
+        questionnaire = listOf(
+            Question("otherDevicePaired", "Is another phone or the WHOOP app paired to the strap right now?", Question.Kind.YES_NO),
+        ),
+        liveReadout = listOf("connectionUptime", "reconnectCount", "lastOffloadResult"),
+        capture = CaptureKind.Toggle,
+        includesScreenshot = false, requires5MG = false,
+    )
+
+    private fun workouts() = TestMode(
+        domain = TestDomain.WORKOUTS, title = "Workouts & GPS",
+        blurb = "Turn this on if a workout went missing or auto-detect didn't fire.",
+        icon = "ic_run", priority = TestPriority.HIGH,
+        captures = listOf("sessionLifecycle", "hrSamples", "gpsFixes", "autoDetectThresholds",
+            "autoDetectWhy", "crossSourceDedup"),
+        questionnaire = listOf(
+            Question("startMethod", "Did you start it manually or expect auto-detect?", Question.Kind.TEXT),
+        ),
+        liveReadout = listOf("lastSessionSummary"),
+        capture = CaptureKind.Toggle,
+        includesScreenshot = false, requires5MG = false,
+    )
+
+    private fun display() = TestMode(
+        domain = TestDomain.DISPLAY, title = "Display & Performance",
+        blurb = "Turn this on if a screen looks wrong or feels laggy, then grab a shot.",
+        icon = "ic_paintbrush", priority = TestPriority.HIGH,
+        captures = listOf("screenshot", "deviceMetrics", "frameTimeTrace", "memoryHighWater"),
+        questionnaire = listOf(
+            Question("screenAndIssue", "What screen, and what looked or felt wrong (laggy/clipped)?", Question.Kind.TEXT),
+        ),
+        liveReadout = listOf("deviceMetricsNow"),
+        capture = CaptureKind.Toggle,
+        includesScreenshot = true, requires5MG = false,
+    )
+
+    private fun dataImport() = TestMode(
+        domain = TestDomain.IMPORT, title = "Import & Data Ingest",
+        blurb = "Turn this on if a file import dropped rows or came in wrong.",
+        icon = "ic_import", priority = TestPriority.HIGH,
+        captures = listOf("parserVersion", "fileMeta", "perStageRows", "rejectCounts", "firstFailingRow",
+            "dedupMerge", "dayDeltas", "failingFileSample"),
+        questionnaire = listOf(
+            Question("appFormatExpected", "Which app/format, and what did you expect to import?", Question.Kind.TEXT),
+        ),
+        liveReadout = listOf("lastImportSummary"),
+        capture = CaptureKind.Toggle,
+        includesScreenshot = false, requires5MG = false,
+    )
+
+    private fun steps() = TestMode(
+        domain = TestDomain.STEPS, title = "Steps",
+        blurb = "Turn this on if your step count looks off versus your phone.",
+        icon = "ic_steps", priority = TestPriority.HIGH,
+        captures = listOf("motionVolume", "stepCalibration", "phoneReferenceCount", "rawStepCounter",
+            "wrapAwareDeltas", "droppedDeltas"),
+        questionnaire = listOf(
+            Question("otherTrackerSteps", "What did your phone or another tracker report for the same day?", Question.Kind.TEXT),
+        ),
+        liveReadout = listOf("stepsToday", "calibrationState"),
+        capture = CaptureKind.Toggle,
+        includesScreenshot = false, requires5MG = false,
+    )
+
     private fun battery() = TestMode(
         domain = TestDomain.BATTERY, title = "Battery & Charging",
         blurb = "Wear it a few days so we can fit your real discharge slope.",
@@ -82,6 +153,34 @@ object TestModeRegistry {
         ),
         liveReadout = listOf("currentSoc", "estimateDaysLeft", "slopeSource"),
         capture = CaptureKind.Guided(CaptureUnit.DAYS, 3),
+        includesScreenshot = false, requires5MG = false,
+    )
+
+    private fun recovery() = TestMode(
+        domain = TestDomain.RECOVERY, title = "Recovery (Charge)",
+        blurb = "Turn this on if Charge looks wrong, to see which term moved it.",
+        icon = "ic_recovery", priority = TestPriority.MED,
+        captures = listOf("chargeTermBreakdown", "baselinesPerNight", "termZScores", "nilTerm",
+            "forecastInputs"),
+        questionnaire = listOf(
+            Question("recalHealthHrv", "Recent recalibration? Is Apple Health / Health Connect feeding HRV?", Question.Kind.TEXT),
+        ),
+        liveReadout = listOf("lastChargeBreakdown"),
+        capture = CaptureKind.Toggle,
+        includesScreenshot = false, requires5MG = false,
+    )
+
+    private fun hrv() = TestMode(
+        domain = TestDomain.HRV, title = "HRV & Autonomic",
+        blurb = "Turn this on if HRV reads nil or looks off, to see the clean beats.",
+        icon = "ic_hrv", priority = TestPriority.MED,
+        captures = listOf("rawRR", "nInputCleanRejected", "rmssdSdnn", "minBeatsCleared",
+            "spotVsContinuous", "respRsa"),
+        questionnaire = listOf(
+            Question("otherAppHrv", "Is another app feeding HRV to Apple Health / Health Connect?", Question.Kind.YES_NO),
+        ),
+        liveReadout = listOf("lastHrvComputation"),
+        capture = CaptureKind.Toggle,
         includesScreenshot = false, requires5MG = false,
     )
 }
