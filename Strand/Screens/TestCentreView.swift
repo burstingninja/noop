@@ -371,6 +371,9 @@ private struct TestModeRow: View {
             if on, mode.domain == .hrv {
                 HrvReadoutPanel(live: live)
             }
+            if on, mode.domain == .steps {
+                StepsReadoutPanel(live: live)
+            }
             HStack {
                 Spacer()
                 Button("Report") { report.start(mode: mode, live: live) }
@@ -477,6 +480,26 @@ private struct HrvReadoutPanel: View {
         let last = TestReadout.lastHrvComputation(taggedTail: live.taggedTail(domain: .hrv))
         VStack(alignment: .leading, spacing: 4) {
             ReadoutRow(label: "Last HRV reading", value: last ?? "no reading yet")
+        }
+        .padding(.top, 2)
+    }
+}
+
+/// The Steps live-readout panel: today's steps and the calibration state, parsed from the `.steps`-tagged
+/// log tail the Steps test-mode emitters write (the WHOOP-4 calibration / estimate lines and the 5/MG raw
+/// scaledSteps), by the pure `StepsReadout`. Binding off the tagged tail mirrors the Recovery / HRV panels,
+/// so the analytics layer needs no new published properties. No hardcoded colours; uses the same ReadoutRow
+/// tokens as the other panels. No em-dash in any string here.
+private struct StepsReadoutPanel: View {
+    @ObservedObject var live: LiveState
+
+    var body: some View {
+        let tail = live.taggedTail(domain: .steps)
+        let steps = StepsReadout.stepsToday(taggedTail: tail)
+        let calState = StepsReadout.calibrationState(taggedTail: tail)
+        VStack(alignment: .leading, spacing: 4) {
+            ReadoutRow(label: "Steps today", value: steps.map(String.init) ?? "no estimate yet")
+            ReadoutRow(label: "Calibration", value: calState ?? "no calibration yet")
         }
         .padding(.top, 2)
     }

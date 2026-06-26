@@ -80,6 +80,11 @@ final class IntelligenceEngine: ObservableObject {
         /// actor and replayed through `diagnosticSink` tagged `.sleep` in per-day order. Empty unless the
         /// Sleep mode is active (the gate is read once before the loop), so the default path is unchanged.
         let sleepTrace: [String]
+        /// Steps test-mode raw-counter trace lines (5/MG cumulative @57 series + wrap-aware deltas + dropped
+        /// deltas) for this day, collected off the main actor and replayed tagged `.steps` in per-day order.
+        /// Empty unless the Steps mode is active (the gate is read once before the loop), so the default path
+        /// is byte-identical: the trace recomputes the SAME wrap-aware sum analyzeDay already computed.
+        let stepsTrace: [String]
     }
 
     struct Computed: Identifiable {
@@ -342,6 +347,11 @@ final class IntelligenceEngine: ObservableObject {
         // runs its byte-identical default path. When true, each day collects its gate-trace + Rest line,
         // replayed below through `diagnosticSink` tagged `.sleep` in per-day order.
         let sleepTraceActive = TestCentre.active(.sleep)
+        // Steps test mode: read the zero-cost gate ONCE here (a single Bool) and capture it into the detached
+        // loop. When false (the default), no raw-counter trace is built per day. When true, each day collects
+        // the 5/MG cumulative @57 series + wrap-aware deltas + dropped deltas, replayed below tagged `.steps`.
+        // The trace recomputes the SAME wrap-aware sum analyzeDay already did, so the steps total is unchanged.
+        let stepsTraceActive = TestCentre.active(.steps)
         let scanned: [DayScan] = await Task.detached(priority: .utility) {
             var out: [DayScan] = []
             for offset in 0..<maxDays {
@@ -435,6 +445,17 @@ final class IntelligenceEngine: ObservableObject {
                                                      // it affects detected nights, not just the self-heal restage.
                                                      useSleepStagerV2: useSleepStagerV2,
                                                      traceSink: traceSink)
+                // ── Steps test mode: 5/MG raw-counter trace ──────────────────────────────────────────────
+                // Only built when the Steps mode is on (the gate was read once before the loop). Recomputes
+                // the SAME wrap-aware @57 sum analyzeDay just ran, over the SAME `daySteps` calendar-day
+                // stream, so the reported scaledSteps equals the day's steps_est — the trace cannot diverge.
+                // Pure inputs, carried out so the main actor replays it tagged `.steps` in per-day order.
+                var stepsTrace: [String] = []
+                if stepsTraceActive {
+                    stepsTrace = StepsEstimateEngine.rawCounterTrace(
+                        daySteps: daySteps, dayKey: day, tzOffsetSeconds: tzOffset,
+                        ticksPerStep: up.stepTicksPerStep)
+                }
                 // ── RHR floor-vs-mean diagnostic (#691) ────────────────────────────────────────────────
                 // Make the recurring "NOOP's resting HR reads LOWER than my sleeping-HR app" reports
                 // explainable from the strap log instead of a guess. The two numbers measure different
@@ -455,7 +476,8 @@ final class IntelligenceEngine: ObservableObject {
                     }.map { $0.bpm }
                     rhrLine = Self.rhrFloorMeanLogLine(day: res.daily.day, floor: floor, inBedBpms: inBedBpms)
                 }
-                out.append(DayScan(result: res, rhrLine: rhrLine, sleepTrace: sleepTrace))
+                out.append(DayScan(result: res, rhrLine: rhrLine, sleepTrace: sleepTrace,
+                                   stepsTrace: stepsTrace))
             }
             return out
         }.value
@@ -473,6 +495,9 @@ final class IntelligenceEngine: ObservableObject {
             // Sleep & Rest test mode (E5): replay this day's gate-trace + Rest lines tagged `.sleep` so they
             // land under the profile tag in the export. Empty unless the mode is active.
             for line in scan.sleepTrace { diagnosticSink?(line, .sleep) }
+            // Steps test mode: replay this day's 5/MG raw-counter trace tagged `.steps`. Empty unless the
+            // mode is active, so the default path emits zero `.steps` lines here.
+            for line in scan.stepsTrace { diagnosticSink?(line, .steps) }
             scoredNights.append((daily: res.daily, strain: res.strain, cachedSleep: res.cachedSleep,
                                  workouts: res.workouts, nightlySkin: res.nightlySkinTempC,
                                  sessionMotion: res.sessionMotionByStart))
@@ -842,6 +867,26 @@ final class IntelligenceEngine: ObservableObject {
                 profile.stepsCalibrationSampleDays = have
                 profile.stepsCalibrationConfidence = 0
                 profile.stepsCalibrationManual = false
+            }
+        }
+
+        // Steps test mode: emit the WHOOP-4 motion-volume calibration trace (per-day points + the fitted /
+        // manual / withheld calibration state) and a per-day estimate line, tagged `.steps`. Only when the
+        // mode is on (the gate was read once before the scan loop), so the default path emits zero `.steps`
+        // lines here. The trace reuses StepsEstimateEngine.calibrate/estimate VERBATIM, so it cannot diverge
+        // from the coefficient + steps_est just written above.
+        if stepsTraceActive {
+            for line in StepsEstimateEngine.calibrationTrace(points: calPoints,
+                                                             manualOverride: profile.stepsManualOverride) {
+                diagnosticSink?(line, .steps)
+            }
+            if let cal = StepsEstimateEngine.calibrate(calPoints, manualOverride: profile.stepsManualOverride) {
+                for dm in dailies where refStepsByDay[dm.day] == nil {
+                    guard let motion = motionByDay[dm.day],
+                          let est = StepsEstimateEngine.estimate(motion: motion, calibration: cal) else { continue }
+                    diagnosticSink?("stepsEst day=\(dm.day) steps=\(est) "
+                        + "motion=\((motion * 100).rounded() / 100) (motion-volume estimate)", .steps)
+                }
             }
         }
 

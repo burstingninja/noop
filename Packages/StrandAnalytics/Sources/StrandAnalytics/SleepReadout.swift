@@ -84,3 +84,48 @@ public enum TestReadout {
         return nil
     }
 }
+
+/// Pure values for the Steps live-readout panel. Each parses the `.steps`-tagged log tail the Steps
+/// test-mode emitters write, so the panel reflects exactly the last step estimate and calibration state
+/// without the engine having to expose new published properties. No state, no side effects, no em-dashes.
+/// The Kotlin twin is the StepsReadout object in StepsEstimateEngineTrace.kt.
+public enum StepsReadout {
+
+    /// Today's steps for the `stepsToday` id: the most recent scaled-steps figure in the tagged tail. The
+    /// 5/MG raw emitter writes "[steps] stepsRaw total ... scaledSteps=<n> ...", and the WHOOP-4 path's
+    /// estimate is surfaced the same way ("stepsEst day=... steps=<n>"). Returns the most recent of either,
+    /// so the panel reads the same number the Today tile shows. nil when no step line is present yet.
+    public static func stepsToday(taggedTail: [String]) -> Int? {
+        for line in taggedTail.reversed() {
+            if let n = intField(line, key: "scaledSteps=") { return n }
+            if line.contains("stepsEst "), let n = intField(line, key: "steps=") { return n }
+        }
+        return nil
+    }
+
+    /// Calibration state for the `calibrationState` id: the most recent calibration outcome fragment the
+    /// WHOOP-4 calibration emitter writes ("k=<n> sampleDays=<n> confidence=<n> manual=<bool>" on a fit, or
+    /// "needsMoreDays have=<n> need=<n>" when withheld). Returns the parsed fragment so the panel reads the
+    /// same state Settings shows. nil when no calibration line is present yet (e.g. a 5/MG-only session).
+    public static func calibrationState(taggedTail: [String]) -> String? {
+        for line in taggedTail.reversed() {
+            if let r = line.range(of: "stepsCal fit ") {
+                let frag = String(line[r.upperBound...]).prefix { $0 != "(" }.trimmingCharacters(in: .whitespaces)
+                if !frag.isEmpty { return frag }
+            }
+            if let r = line.range(of: "stepsCal withheld reason=") {
+                let frag = String(line[r.upperBound...]).prefix { $0 != "(" }.trimmingCharacters(in: .whitespaces)
+                if !frag.isEmpty { return "not calibrated (\(frag))" }
+            }
+        }
+        return nil
+    }
+
+    /// Parse a `key=<int>` field out of a line (the value runs up to the next space). nil when absent or
+    /// non-numeric. Shared by both readout ids.
+    static func intField(_ line: String, key: String) -> Int? {
+        guard let r = line.range(of: key) else { return nil }
+        let token = line[r.upperBound...].prefix { $0 != " " }
+        return Int(token)
+    }
+}
