@@ -94,6 +94,19 @@ enum TestBundleAssembler {
         let (capped, truncated) = capEntries(redacted)
         entries = capped
 
+        // 2b. Display & Performance: capture a screenshot for the .display profile (or any mode that
+        //     declares includesScreenshot) and add it as screenshot.png. The PNG is BINARY image bytes,
+        //     not text, so it is added AFTER the redactEntries pass on purpose: redaction scrubs text
+        //     identifiers, never pixels (running raw PNG bytes through a UTF-8 decode/scrub would corrupt
+        //     them). The screenshot is still covered by the mandatory review-before-share gate (nothing
+        //     ships until the user taps Share), which the gate's note calls out. A capture only happens
+        //     for the gated profile, so a non-display report never grabs a shot.
+        let wantsShot = profile == .display
+            || (TestModeRegistry.mode(profile)?.includesScreenshot ?? false)
+        if wantsShot, let png = DisplayScreenshot.capturePNG() {
+            entries.append(FileExport.BundleEntry(name: DisplayScreenshot.bundleName, data: png))
+        }
+
         // 3. meta.json: the machine-readable tie. The questionnaire answers are whatever the tester saved
         //    for this profile; profileStartedAt is ISO8601 from TestCentre. Storage is left zeroed in
         //    Phase 1 (the DB-size probe is a later wire-up); we never fabricate a number we cannot read.

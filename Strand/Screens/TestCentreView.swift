@@ -350,6 +350,12 @@ private struct TestModeRow: View {
                     .accessibilityLabel("\(mode.title) test mode")
                     .onChangeCompat(of: on) { isOn in
                         if isOn { TestCentre.activate(mode.domain) } else { TestCentre.deactivate(mode.domain) }
+                        // Display & Performance owns a live frame monitor. It must run ONLY while the mode
+                        // is on: start it on toggle-on (after wiring its sink to the redacting .display
+                        // log), tear it down on toggle-off so no display link survives. Zero-cost when off.
+                        if mode.domain == .display {
+                            if isOn { startDisplayMonitor() } else { DisplayPerformanceMonitor.shared.stop() }
+                        }
                     }
             }
             Text(mode.blurb)
@@ -381,6 +387,9 @@ private struct TestModeRow: View {
             if on, mode.domain == .dataImport {
                 ImportReadoutPanel(live: live)
             }
+            if on, mode.domain == .display {
+                DisplayReadoutPanel(live: live)
+            }
             HStack {
                 Spacer()
                 Button("Report") { report.start(mode: mode, live: live) }
@@ -388,7 +397,28 @@ private struct TestModeRow: View {
                     .accessibilityLabel("Report a \(mode.title) bug")
             }
         }
-        .onAppear { on = TestCentre.active(mode.domain) }
+        .onAppear {
+            on = TestCentre.active(mode.domain)
+            // If the Display mode was already on when the screen appears, (re)start its frame monitor and
+            // wire the sink, so a monitor that was torn down (e.g. the screen left and came back) resumes.
+            if mode.domain == .display, on { startDisplayMonitor() }
+        }
+        .onDisappear {
+            // Leaving the screen tears the frame monitor down so no display link survives a navigation
+            // away. The mode flag stays on (the user's test is still active); the monitor resumes on
+            // .onAppear above. This keeps the perpetual-display-link contract: a link exists only while the
+            // Test Centre is on screen with the mode on.
+            if mode.domain == .display { DisplayPerformanceMonitor.shared.stop() }
+        }
+    }
+
+    /// Wire the Display monitor's sink to the redacting `.display` log and start it. The sink is set every
+    /// start so a fresh LiveState (e.g. after a screen re-entry) is always the live target.
+    private func startDisplayMonitor() {
+        DisplayPerformanceMonitor.shared.emit = { [weak live] line in
+            live?.append(log: line, domain: .display)
+        }
+        DisplayPerformanceMonitor.shared.start()
     }
 }
 
@@ -540,6 +570,26 @@ private struct ImportReadoutPanel: View {
         let summary = ImportReadout.lastImportSummary(taggedTail: live.taggedTail(domain: .dataImport))
         VStack(alignment: .leading, spacing: 4) {
             ReadoutRow(label: "Last import", value: summary ?? "no import yet")
+        }
+        .padding(.top, 2)
+    }
+}
+
+/// The Display & Performance live-readout panel: the device-metrics summary (size / size-class / Dynamic
+/// Type / orientation / theme) and the latest frame-time summary, parsed from the `.display`-tagged log
+/// tail the device-metrics + frame-monitor emitters write, by the pure `DisplayReadout`. Binding off the
+/// tagged tail mirrors the other app-level panels, so the monitor needs no new published property. No
+/// hardcoded colours; uses the same ReadoutRow tokens as the other panels. No em-dash in any string here.
+private struct DisplayReadoutPanel: View {
+    @ObservedObject var live: LiveState
+
+    var body: some View {
+        let tail = live.taggedTail(domain: .display)
+        let metrics = DisplayReadout.deviceMetricsNow(taggedTail: tail)
+        let frames = DisplayReadout.frameSummaryNow(taggedTail: tail)
+        VStack(alignment: .leading, spacing: 4) {
+            ReadoutRow(label: "Device metrics", value: metrics ?? "reading…")
+            ReadoutRow(label: "Frame summary", value: frames ?? "no window yet")
         }
         .padding(.top, 2)
     }
