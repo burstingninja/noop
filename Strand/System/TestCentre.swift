@@ -12,6 +12,7 @@ public enum TestCentre {
     // names (see migrate()), so no user loses a setting.
     private static let activePrefix = "testcentre.active."          // + domain.id  -> Bool
     private static let startedPrefix = "testcentre.startedAt."      // + domain.id  -> Double (unix)
+    private static let guidedTargetPrefix = "testcentre.target."    // + domain.id  -> Int (nights/days)
     private static let answersPrefix = "testcentre.answers."        // + domain.id  -> [String:String] (Data)
     private static let migratedKey = "testcentre.migrated.v1"
 
@@ -44,6 +45,16 @@ public enum TestCentre {
     public static func startedAt(_ d: TestDomain) -> Date? {
         let t = UserDefaults.standard.double(forKey: startedPrefix + d.id)
         return t > 0 ? Date(timeIntervalSince1970: t) : nil
+    }
+
+    /// The guided capture target (nights for Sleep, days for Battery), 0 when unset. Read-through of
+    /// the single namespace; the guided flow (Group E/F) writes it via `setGuidedTarget`.
+    public static func guidedTarget(_ d: TestDomain) -> Int {
+        UserDefaults.standard.integer(forKey: guidedTargetPrefix + d.id)
+    }
+
+    @MainActor public static func setGuidedTarget(_ count: Int, for d: TestDomain) {
+        UserDefaults.standard.set(count, forKey: guidedTargetPrefix + d.id)
     }
 
     public static func answers(_ d: TestDomain) -> [String: String] {
