@@ -154,8 +154,13 @@ public enum WorkoutsTrace {
 
     /// A GPS-fix-progress line: the raw fixes seen, how many the accuracy / speed filter accepted, and the
     /// running distance. So a route that under-records (a weak signal, a denied permission) is visible.
-    public static func gpsLine(rawFixes: Int, acceptedPoints: Int, distanceM: Double) -> String {
-        "gps rawFixes=\(rawFixes) accepted=\(acceptedPoints) "
+    ///
+    /// `rawFixes` is OPTIONAL: macOS sees the pre-filter raw stream and passes a real count, so the line can
+    /// show a true accept rate. Android's LocationTracker pre-filters upstream, so the raw count is NOT
+    /// available at the GpsSession seam (every fix here is already accepted); it passes nil and the line
+    /// renders `rawFixes=n/a` rather than implying an accept rate the platform cannot actually measure.
+    public static func gpsLine(rawFixes: Int?, acceptedPoints: Int, distanceM: Double) -> String {
+        "gps rawFixes=\(rawFixes.map(String.init) ?? "n/a") accepted=\(acceptedPoints) "
             + "distanceM=\(Int(distanceM.rounded())) (filter: accuracy+speed gate)"
     }
 
